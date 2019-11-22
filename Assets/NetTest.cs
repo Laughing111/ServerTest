@@ -13,7 +13,7 @@ public class NetTest : MonoBehaviour
     void Start()
     {
         netMangaer = NetMangaer.Ins;
-        netMangaer.Init(serverIp, port);
+        netMangaer.Init(serverIp, port,5);
 
         netMangaer.receivedSucceed += PushRecvMsg;
         netMangaer.sendSucceed += PushSendMsg;
@@ -53,5 +53,10 @@ public class NetTest : MonoBehaviour
             msgQueue = new Queue<string>();
         }
         msgQueue.Enqueue("【已发送】" + msg);
+    }
+
+    public void OnDisable()
+    {
+        netMangaer.DisConnect();
     }
 }

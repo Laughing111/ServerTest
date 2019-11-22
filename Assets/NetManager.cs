@@ -31,6 +31,8 @@ public class NetMangaer
             return ins;
         }
     }
+    private long lastPingTime;
+    private long pingInterval;
     private Socket clientSocket;
     private IPEndPoint iPEndPoint;
     private byte[] recvBuffer;
@@ -38,10 +40,11 @@ public class NetMangaer
     public Action<string> sendSucceed;
     SocketHandle socketHandle;
     private bool hasConnected;
-    public void Init(string serverIp,int port)
+    public void Init(string serverIp, int port, long pingInterval)
     {
         iPEndPoint = new IPEndPoint(IPAddress.Parse(serverIp), port);
         recvBuffer = new byte[1024];
+        this.pingInterval = pingInterval;
     }
     public void ConnectServer()
     {
@@ -54,9 +57,9 @@ public class NetMangaer
                 clientSocket.BeginConnect(iPEndPoint, ConnectCallBack, clientSocket);
                 hasConnected = true;
             }
-            
+
         }
-        catch(Exception e)
+        catch (Exception e)
         {
             Debug.Log(e.Message);
         }
@@ -70,15 +73,18 @@ public class NetMangaer
             Socket socket = (Socket)ar.AsyncState;
             socket.EndConnect(ar);
             Debug.Log("服务器连接成功！");
-            
             socket.BeginReceive(recvBuffer, 0, 1024, SocketFlags.None, ReceiveCallBack, socket);
+            //连接成功后，开始心跳机制
+            HeartSend();
         }
-        catch(Exception e)
+        catch (Exception e)
         {
             Debug.Log(e.Message);
         }
-       
+
     }
+
+
 
     private void ReceiveCallBack(IAsyncResult ar)
     {
@@ -87,11 +93,12 @@ public class NetMangaer
             Socket socket = (Socket)ar.AsyncState;
             int length = socket.EndReceive(ar);
             NetBufferReader netBufferReader = new NetBufferReader(recvBuffer);
-            string msg=netBufferReader.GetString();
+            string msg = netBufferReader.GetString();
             if (receivedSucceed != null)
             {
                 receivedSucceed(msg);
             }
+            //处理消息
             socket.BeginReceive(recvBuffer, 0, 1024, SocketFlags.None, ReceiveCallBack, socket);
         }
         catch (Exception e)
@@ -101,28 +108,49 @@ public class NetMangaer
         }
     }
 
+    private void HeartSend()
+    {
+
+        SendMsg("ping");
+        lastPingTime = NetTimer.GetTimeStamp();
+        while (true)
+        {
+            if (clientSocket.Connected)
+            {
+                if (NetTimer.GetTimeStamp() - lastPingTime >= pingInterval)
+                {
+                    SendMsg("ping");
+                    lastPingTime = NetTimer.GetTimeStamp();
+                }
+            }
+        }
+    }
+
     public void SendMsg(string msg)
     {
-        try
+        if (clientSocket.Connected)
         {
-            if (socketHandle == null)
+            try
             {
-                socketHandle = new SocketHandle(clientSocket);
-                socketHandle.msg = msg;
+                if (socketHandle == null)
+                {
+                    socketHandle = new SocketHandle(clientSocket);
+                    socketHandle.msg = msg;
+                }
+                NetBufferWriter netBufferWriter = new NetBufferWriter();
+                byte[] sendBuffer = netBufferWriter.GetByte(msg);
+                clientSocket.BeginSend(sendBuffer, 0, sendBuffer.Length, SocketFlags.None, SendCallBack, socketHandle);
             }
-            NetBufferWriter netBufferWriter = new NetBufferWriter();
-            byte[] sendBuffer=netBufferWriter.GetByte(msg);
-            clientSocket.BeginSend(sendBuffer, 0, sendBuffer.Length, SocketFlags.None, SendCallBack, socketHandle);
-        }
-        catch(Exception e)
-        {
-            Debug.Log(e.Message);
+            catch (Exception e)
+            {
+                Debug.Log(e.Message);
+            }
         }
     }
 
     private void SendCallBack(IAsyncResult ar)
     {
-        SocketHandle sendHandle =(SocketHandle)ar.AsyncState;
+        SocketHandle sendHandle = (SocketHandle)ar.AsyncState;
         sendHandle.socket.EndSend(ar);
         if (sendSucceed != null)
         {
@@ -130,7 +158,7 @@ public class NetMangaer
         }
     }
 
-    public  void DisConnect()
+    public void DisConnect()
     {
         if (clientSocket != null)
         {
@@ -140,6 +168,6 @@ public class NetMangaer
             Debug.Log("与服务器断开连接…");
             hasConnected = false;
         }
-        
+
     }
 }

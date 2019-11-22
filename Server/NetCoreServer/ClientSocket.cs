@@ -6,14 +6,16 @@ using System.Text;
 
 namespace NetCoreServer
 {
-    
     class ClientSocket
     {
-
         public byte[] recvData;
         public object sendObject { get; private set; }
         public Socket socket;
         public int id { get; private set; }
+
+        public long lastPingTime;
+
+        public static long aliveTime = 8;
         public ClientSocket(int id, Socket socket)
         {
             this.id = id;
@@ -21,19 +23,29 @@ namespace NetCoreServer
             recvData = new byte[1024];
         }
 
+        /// <summary>
+        /// 处理心跳
+        /// </summary>
+        public void StartHeartCheck(Action<ClientSocket> errorHandle)
+        {
+            lastPingTime = NetTimer.GetTimeStamp();
+            while (true)
+            {
+                if (NetTimer.GetTimeStamp() - lastPingTime > aliveTime)
+                {
+                    //处理客户端断线
+                    Disconnect(errorHandle);
+                }
+            }
+        }
+
         public void StartRecv(Action<ClientSocket> errorHandle)
         {
             try
             {
-                if (!socket.Poll(10, SelectMode.SelectRead))
-                {
-                    socket.BeginReceive(recvData, 0, 1024, SocketFlags.None, ReceiveCallback, errorHandle);
-                }
-                else
-                {
-                    Disconnect();
-                }
-            }catch(Exception e)
+               socket.BeginReceive(recvData, 0, 1024, SocketFlags.None, ReceiveCallback, errorHandle);
+            }
+            catch (Exception e)
             {
                 Console.WriteLine(e.Message);
                 Disconnect(errorHandle);
@@ -42,31 +54,47 @@ namespace NetCoreServer
 
         private void ReceiveCallback(IAsyncResult ar)
         {
-            int length = socket.EndReceive(ar);
-            if (length <= 0)
+            try
             {
-                //说明客户端断开连接
-                Disconnect((Action<ClientSocket>)ar.AsyncState);
-                return;
-            }
-            else
-            {
-                //todo 封装消息队列  显示方法
-                //string msg= Encoding.UTF8.GetString(data);
-                NetBufferReader netBufferReader = new NetBufferReader(recvData);
-                string msg = netBufferReader.GetString();
-                Console.WriteLine("【收 到{0}】ID {1}：{2}", socket.RemoteEndPoint.ToString(),id, msg);
-                SendBytes(string.Format("服务器反馈：收到来自ID为{0}的消息_{1}", id, msg));
-            }
-            if (!socket.Poll(10, SelectMode.SelectRead))
-            {
+                int length = socket.EndReceive(ar);
+                if (length <= 0)
+                {
+                    //说明客户端断开连接
+                    Disconnect((Action<ClientSocket>)ar.AsyncState);
+                    return;
+                }
+                else
+                {
+                    //todo 封装消息队列  显示方法
+                    //string msg= Encoding.UTF8.GetString(data);
+                    NetBufferReader netBufferReader = new NetBufferReader(recvData);
+                    string msg = netBufferReader.GetString();
+                    RecvMsgHandle(msg);
+                }
                 socket.BeginReceive(recvData, 0, 1024, SocketFlags.None, ReceiveCallback, ar.AsyncState);
             }
-            else
+            catch (Exception e)
             {
+                Console.WriteLine(e.Message);
                 Disconnect((Action<ClientSocket>)ar.AsyncState);
             }
-                
+            
+        }
+
+        private void RecvMsgHandle(string msg)
+        {
+            switch (msg)
+            {
+                case "ping":
+                    lastPingTime = NetTimer.GetTimeStamp();
+                    Console.WriteLine("【心跳{0}】ID {1}：{2}", socket.RemoteEndPoint.ToString(), id, msg);
+                    SendBytes(string.Format("pong"));
+                    break;
+                default:
+                    Console.WriteLine("【收 到{0}】ID {1}：{2}", socket.RemoteEndPoint.ToString(), id, msg);
+                    SendBytes(string.Format("服务器反馈：收到来自ID为{0}的消息_{1}", id, msg));
+                    break;
+            }
         }
 
         public void SendBytes(string value, Action<ClientSocket> errorHandle =null)

@@ -32,6 +32,7 @@ namespace NetCoreServer
         {
             Socket socketSer = (Socket)ar.AsyncState;
             ClientSocket client = null;
+            socketSer.BeginAccept(AcceptCallback, socketSer);
             try
             {
                 Socket socketClient = socketSer.EndAccept(ar);
@@ -43,6 +44,7 @@ namespace NetCoreServer
                     client.SendBytes("this is Server!");
                     //处理客户端Socket
                     client.StartRecv(RemoveClient);
+                    client.StartHeartCheck(RemoveClient);
                 }
             }
             catch(Exception e)
@@ -53,7 +55,7 @@ namespace NetCoreServer
                     RemoveClient(client);
                 }
             }
-            socketSer.BeginAccept(AcceptCallback, socketSer);
+            
         }
 
         public void RemoveClient(ClientSocket client)
