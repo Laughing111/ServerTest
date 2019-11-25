@@ -15,6 +15,7 @@ namespace NetCoreServer
 
         public long lastPingTime;
 
+
         public static long aliveTime = 8;
         public ClientSocket(int id, Socket socket)
         {
@@ -31,7 +32,8 @@ namespace NetCoreServer
             lastPingTime = NetTimer.GetTimeStamp();
             while (true)
             {
-                if (NetTimer.GetTimeStamp() - lastPingTime > aliveTime)
+                long nowT = NetTimer.GetTimeStamp();
+                if (nowT - lastPingTime > aliveTime)
                 {
                     //处理客户端断线
                     Disconnect(errorHandle);
@@ -92,7 +94,9 @@ namespace NetCoreServer
                     break;
                 default:
                     Console.WriteLine("【收 到{0}】ID {1}：{2}", socket.RemoteEndPoint.ToString(), id, msg);
-                    SendBytes(string.Format("服务器反馈：收到来自ID为{0}的消息_{1}", id, msg));
+                    //SendBytes(string.Format("服务器反馈：收到来自ID为{0}的消息_{1}", id, msg));
+                    //将服务器收到的消息缓存起来
+                    MessageHandle.Ins.StoreFrameMsg(msg);
                     break;
             }
         }

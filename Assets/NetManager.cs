@@ -33,11 +33,13 @@ public class NetMangaer
     }
     private long lastPingTime;
     private long pingInterval;
+    public long pingValue;
     private Socket clientSocket;
     private IPEndPoint iPEndPoint;
     private byte[] recvBuffer;
     public Action<string> receivedSucceed;
     public Action<string> sendSucceed;
+    public Action connectSucceed;
     SocketHandle socketHandle;
     private bool hasConnected;
     public void Init(string serverIp, int port, long pingInterval)
@@ -56,6 +58,7 @@ public class NetMangaer
                 //clientSocket.SetSocketOption()
                 clientSocket.BeginConnect(iPEndPoint, ConnectCallBack, clientSocket);
                 hasConnected = true;
+               
             }
 
         }
@@ -73,6 +76,10 @@ public class NetMangaer
             Socket socket = (Socket)ar.AsyncState;
             socket.EndConnect(ar);
             Debug.Log("服务器连接成功！");
+            if (connectSucceed != null)
+            {
+                connectSucceed();
+            }
             socket.BeginReceive(recvBuffer, 0, 1024, SocketFlags.None, ReceiveCallBack, socket);
             //连接成功后，开始心跳机制
             HeartSend();
@@ -94,9 +101,17 @@ public class NetMangaer
             int length = socket.EndReceive(ar);
             NetBufferReader netBufferReader = new NetBufferReader(recvBuffer);
             string msg = netBufferReader.GetString();
-            if (receivedSucceed != null)
+            Debug.Log(msg);
+            if (msg == "pong")
             {
-                receivedSucceed(msg);
+                pingValue = NetTimer.GetTimeStamp() - lastPingTime;
+            }
+            else
+            {
+                if (receivedSucceed != null)
+                {
+                    receivedSucceed(msg);
+                }
             }
             //处理消息
             socket.BeginReceive(recvBuffer, 0, 1024, SocketFlags.None, ReceiveCallBack, socket);
@@ -110,7 +125,6 @@ public class NetMangaer
 
     private void HeartSend()
     {
-
         SendMsg("ping");
         lastPingTime = NetTimer.GetTimeStamp();
         while (true)
